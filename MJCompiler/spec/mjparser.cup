@@ -1,0 +1,313 @@
+package rs.ac.bg.etf.pp1;
+
+import java_cup.runtime.*;
+import org.apache.log4j.*;
+import rs.ac.bg.etf.pp1.ast.*;
+
+parser code {:
+
+	boolean errorDetected;
+	Logger log = Logger.getLogger(getClass());
+   	int numberOfErrors = 0;
+   
+    // slede redefinisani metodi za prijavu gresaka radi izmene teksta poruke
+     
+    public void report_fatal_error(String message, Object info) throws java.lang.Exception {
+      done_parsing();
+      report_error(message, info);
+    }
+  
+    public void syntax_error(Symbol cur_token) {
+        report_error("\nSintaksna greska", cur_token);
+    }
+  
+    public void unrecovered_syntax_error(Symbol cur_token) throws java.lang.Exception {
+        report_fatal_error("Fatalna greska, parsiranje se ne moze nastaviti", cur_token);
+    }
+
+    public void report_error(String message, Object info) {
+    	StringBuilder msg = new StringBuilder(message); 
+    	if (info instanceof Symbol)
+            msg.append (" na liniji ").append(((Symbol)info).left);
+        log.error(msg.toString());
+        numberOfErrors++;
+        errorDetected=true;
+    }
+
+
+:}
+
+init with {:
+	errorDetected = false;
+:}
+
+
+scan with {:
+	Symbol s = this.getScanner().next_token();
+	if (s != null && s.value != null) 
+		log.info(s.toString() + " " + s.value.toString());
+	return s;
+:}
+
+terminal PROG, BREAK, PRINT, RETURN, IF, ELSE, CONST, NEW, READ, CONTINUE, UNION, DO, WHILE, MAP;
+terminal PLUS, MINUS, STAR, SLASH, PERCENT, EQUAL, INCR, DECR;
+terminal DOUBLE_EQUAL, NOT_EQUAL, GREATER, GREATER_OR_EQUAL, LESS, LESS_OR_EQUAL, AND, OR;
+terminal SEMI, COMMA, COLON, DOT, LPAREN, RPAREN, LBRACE, RBRACE, L_SQ_BRAC, R_SQ_BRAC;
+terminal Integer NUMBER, BOOL;
+terminal String IDENT, VOID;
+terminal Character CHAR;
+
+nonterminal Program, DeclList, VarDeclList, VarDecl, VarDeclAppend, ConstDeclList, ConstDecl, ConstDeclAppend;
+nonterminal Setop, Mulop, Addop, Relop, Assignop, Label, ConstValue;
+nonterminal MethodSignature, MethodType, FormPars, MethodDecl, MethodDeclList;
+nonterminal StatementList, Statement, StatementBlock, DesignatorStatement, WhileArgs;
+nonterminal ActPars, ElseStatement, MethodPars, NumForPrint, FormParam, IfCond;
+nonterminal ProgName, DoNonTerm, ActParsIntro, MethodRecursionHelper, ElseNonTerm, CommaNonTerm, WhileNonTerm;
+nonterminal Factor, Unary, Term, Expr, CondFact, CondTerm, Condition, MethodCall, Designator, DesignatorArrayName, MethodName, Type;
+
+precedence left ELSE;
+
+Program ::= (Program) PROG ProgName DeclList LBRACE MethodDeclList RBRACE;
+
+ProgName ::= (ProgName) IDENT;
+
+DeclList ::=(DeclList_Var) DeclList VarDeclList
+			|
+			(DeclList_Const) DeclList ConstDeclList
+			|
+			(DeclList_Empty) /*epsilon*/
+			;
+
+VarDeclList ::= (VarDeclList_list) Type VarDecl VarDeclAppend SEMI
+				|
+				(VarDeclList_error) error:e VarDeclAppend SEMI /*OporavakOdGreske/*
+				{: parser.report_error("Izvrsen oporavak od greske u definiciji globalne promenljive u liniji " + eleft, null);  :}
+				;
+				
+VarDeclAppend ::=	(VarDeclAppend_yes) COMMA VarDecl VarDeclAppend
+					|
+					(VarDeclAppend_no) /*epsilon*/
+					;
+
+VarDecl ::= (VarDecl_var) IDENT
+			|
+			(VarDecl_array) IDENT L_SQ_BRAC R_SQ_BRAC
+			;
+
+ConstDeclList ::= (ConstDeclList) CONST Type ConstDecl ConstDeclAppend SEMI;
+
+ConstDeclAppend ::=	(ConstDeclAppend_yes) COMMA ConstDecl ConstDeclAppend
+					|
+					(ConstDeclAppend_no) /*epsilon*/
+					;
+
+ConstDecl ::= (ConstDecl) IDENT Assignop ConstValue ;
+
+ConstValue ::=	(ConstValue_number) NUMBER
+				|
+				(ConstValue_bool) BOOL
+				|
+				(ConstValue_char) CHAR
+				;
+
+Type ::= (Type) IDENT ;
+
+MethodDeclList ::=	(MethodDecl_mul) MethodDeclList MethodDecl
+					|
+					(MethodDecl_one) /*epsilon*/
+					;
+					
+FormParam ::= 	(FormParam_noArray) Type IDENT
+				|
+				(FormParam_array) Type IDENT L_SQ_BRAC R_SQ_BRAC
+				;
+			
+FormPars ::=	(FormPars_mul) FormPars COMMA FormParam
+				|
+				(FormPars_one) FormParam
+				|
+				(FormPars_empty) /*epsilon*/
+				|
+				(Form_Pars_error) error:e /*OporavakOdGreske*/
+				{: parser.report_error("Izvrsen oporavak za formalne parametre u liniji " + eleft, null);  :}
+				;
+				
+MethodPars ::=	(MethodPars_empty) /*epsilon*/
+				|
+				(MethodPars_list) MethodPars VarDeclList
+				;
+
+MethodDecl ::= (MethodDecl) MethodSignature MethodPars MethodRecursionHelper LBRACE StatementList RBRACE ;
+
+MethodRecursionHelper ::= (MethodRecursionHelper) ;
+
+MethodSignature ::=	(MethodSignature) MethodType MethodName LPAREN FormPars RPAREN ;
+
+MethodName ::= (MethodName) IDENT ;
+					
+MethodType ::= (MethodType_void) VOID | (MethodType_type) Type ;
+
+StatementList ::=	(StatementList_mul) StatementList StatementBlock
+					|
+					(StatementList_no) /*epsilon*/
+					;
+
+Statement ::= 	(Statement_designator) DesignatorStatement SEMI
+				|
+				(Statement_if) IF LPAREN IfCond RPAREN StatementBlock ElseStatement
+				|
+				(Statement_break) BREAK SEMI
+				|
+				(Statement_continue) CONTINUE SEMI
+				|
+				(Statement_return_void) RETURN SEMI
+				|
+				(Statement_return_type) RETURN Expr SEMI
+				|
+				(Statement_read) READ LPAREN Designator RPAREN SEMI
+				|
+				(Statement_print) PRINT LPAREN Expr NumForPrint RPAREN SEMI
+				|
+				(Statement_do_while) DoNonTerm StatementBlock WhileNonTerm LPAREN WhileArgs RPAREN SEMI
+				;
+
+DoNonTerm ::= (DoNonTerm) DO ;
+
+WhileNonTerm ::= (WhileNonTerm) WHILE ;
+
+IfCond ::=	(IfCond_correct) Condition
+			|
+			(IfCond_error) error:e /*OporavakOdGreske*/
+			{: parser.report_error("Izvrsen oporavak za if uslov  u liniji " + eleft, null);  :}
+			;
+
+StatementBlock ::=	(StatementBlock_block) LBRACE StatementList RBRACE 
+					|
+					(StatementBlock_one) Statement
+					;
+				
+ElseStatement ::= 	(ElseStatement_yes) ElseNonTerm StatementBlock
+					|
+					(ElseStatement_no) /*epsilon*/
+					;
+
+ElseNonTerm ::= (ElseNonTerm) ELSE ;
+				
+NumForPrint ::= (NumForPrint_yes) COMMA NUMBER
+				|
+				(NumForPrint_no) /*epsilon*/
+				;
+
+WhileArgs ::=	(WhileArgs_cond_des) Condition CommaNonTerm DesignatorStatement
+				|
+				(WhileArgs_cond) Condition
+				|
+				(WhileArgs_empty) /*epsilon*/
+				;
+
+CommaNonTerm ::= (CommaNonTerm) COMMA;
+
+DesignatorStatement ::=	(DesignatorStatement_assignExpr) Designator Assignop Expr
+						|
+						(DesignatorStatement_error) error:e /*OporavakOdGreske*/
+						{: parser.report_error("Izvrsen oporavak za dodelu vrednosti u liniji " + eleft, null);  :}
+						|
+						(DesignatorStatement_actPars) MethodCall
+						|
+						(DesignatorStatement_actParsEmpty) Designator LPAREN RPAREN
+						|
+						(DesignatorStatement_incr) Designator INCR
+						|
+						(DesignatorStatement_decr) Designator DECR
+						|
+						(DesignatorStatement_setop) Designator Assignop Designator Setop Designator
+						;
+						
+ActParsIntro ::= (ActParsIntro) ;
+
+ActPars ::=	(ActPars_mul) ActPars COMMA Expr
+			|
+			(ActPars_one) Expr
+			;
+
+Condition ::=	(Condition_op) Condition OR CondTerm
+				|
+				(Condition_noOp) CondTerm
+				;
+
+CondTerm ::=	(CondTerm_op) CondTerm AND CondFact
+				|
+				(CondTerm_noOp) CondFact
+				;
+
+CondFact ::=	(CondFact_op) Expr Relop Expr
+				|
+				(CondFact_noOp) Expr
+				;
+							
+Expr ::=	(Expr_addop) Expr Addop Term
+			|
+			(Expr_term) Term
+			|
+			(Expr_map) Designator MAP Designator
+			;
+			
+Term ::=	(Term_mulop) Term Mulop Unary
+			|
+			(Term_unary) Unary
+			;
+
+Unary ::=	(Unary_neg) MINUS Factor
+			|
+			(Unary_pos) Factor
+			;
+			
+Factor ::=	(Factor_des) Designator
+			|
+			(Factor_des_noPars) Designator LPAREN RPAREN
+			|
+			(Factor_des_pars) MethodCall
+			|
+			(Factor_constValue) ConstValue
+			|
+			(Factor_new_array) NEW Type L_SQ_BRAC Expr R_SQ_BRAC
+			|
+			(Factor_expr) LPAREN Expr RPAREN
+			;
+
+MethodCall ::= (MethodCall) Designator LPAREN ActParsIntro ActPars RPAREN ; 
+
+Designator ::= 	(Designator_ident) IDENT
+				|
+				(Designator_array) DesignatorArrayName L_SQ_BRAC Expr R_SQ_BRAC
+				;
+				
+DesignatorArrayName ::= (DesignatorArrayName) IDENT ;
+
+Label ::= (Label) IDENT ;
+
+Assignop ::= (Assignop) EQUAL ;
+
+Relop ::=	(Relop_equal) DOUBLE_EQUAL
+			|
+			(Relop_notEqual) NOT_EQUAL
+			|
+			(Relop_greater) GREATER
+			|
+			(Relop_greaterOrEqual) GREATER_OR_EQUAL
+			|
+			(Relop_less) LESS
+			|
+			(Relop_lessOrEqual) LESS_OR_EQUAL
+			;
+
+Addop ::= (Addop_add) PLUS | (Addop_minus) MINUS ;
+	
+Mulop ::= 	(Mulop_mul) STAR
+			|
+			(Mulop_div) SLASH
+			|
+			(Mulop_mod) PERCENT
+			;
+
+Setop ::= (Setop) UNION;
