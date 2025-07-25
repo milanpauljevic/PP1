@@ -13,14 +13,13 @@ import rs.etf.pp1.symboltable.concepts.*;
 
 public class SemanticAnalyzer extends VisitorAdaptor {
 	
-	
 	private boolean errorDetected = false;
 	Logger log = Logger.getLogger(getClass());
 	HashSet<String> reservedNames = 
 					new HashSet<String>(Set.of("int", "char", "bool", "set", "null", "eol", "chr", "ord", "add", "addAll"));
 	
-	private Struct boolType = Tab.find("bool").getType();
-	private Struct setType = Tab.find("set").getType();
+	static Struct boolType = Tab.find("bool").getType();
+	static Struct setType = Tab.find("set").getType();
 	private Obj currProgram;
 	private Struct currType;
 	private int constant;
@@ -31,6 +30,7 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 	private int loopCounter = 0;
 	private boolean returnHappened = false;
 	private Stack<ArrayList<Struct>> ActParsStack = new Stack<>();
+	int nVars = 0;
 	
 	/* LOG MESSAGES */
 	public void report_error(String message, SyntaxNode info) {
@@ -86,7 +86,8 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 	//////////////////////
 	//////////////////////
 	
-	//Program
+	
+	//PROGRAM
 	@Override
 	public void visit(ProgName programName) {
 		String progName = programName.getI1();
@@ -101,28 +102,31 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 	
 	@Override
 	public void visit(Program program) {
+		this.nVars = Tab.currentScope.getnVars();
+		log.info(nVars);
 		Tab.chainLocalSymbols(currProgram);
 		Tab.closeScope();
 		if(!mainDeclared) {
 			report_error("U programu nije definisana MAIN metoda", program);
 		}
+		currProgram=null;
 	}
 	
 	
-	//Type
+	//TYPE
 	@Override
 	public void visit(Type type) {
 		Obj objType = Tab.find(type.getI1());
 		if(objType == Tab.noObj) {
 			report_error("Nepostojeci tip: "+type.getI1(), type);
-			currType = Tab.noType;
+			type.struct = currType = Tab.noType;
 		}
 		else if(objType.getKind()!=Obj.Type){
 			report_error("Nedozvoljen tip: "+type.getI1(), type);
-			currType = Tab.noType;
+			type.struct = currType = Tab.noType;
 		}
 		else {
-			currType = objType.getType();
+			type.struct = currType = objType.getType();
 		}
 	}
 	
@@ -218,7 +222,7 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 			}
 			mainDeclared = true;
 		}
-		currMethod = Tab.insert(Obj.Meth, methodName.getI1(), methodRetType);
+		methodName.obj = currMethod = Tab.insert(Obj.Meth, methodName.getI1(), methodRetType);
 		Tab.openScope();
 	}
 	
@@ -367,6 +371,18 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 		}
 	}
 	
+	@Override
+	public void visit(DesignatorArrayName designatorArrayName) {
+		Obj obj=Tab.find(designatorArrayName.getI1());
+		if(obj.getKind()!=Obj.Var && obj.getType().getKind()!=Struct.Array) {
+			designatorArrayName.obj = Tab.noObj;
+			report_error("Nije moguce koriscenje designatora " + designatorArrayName.getI1() + " kao niza" , designatorArrayName);
+		}
+		else {
+			designatorArrayName.obj = obj;
+		}
+	}
+	
 
 	//EXPR
 	@Override
@@ -377,7 +393,7 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 			expr_addop.struct = Tab.intType;
 		}
 		else {
-			report_error("Neadekvatni tipovi u clanova addop operacije", expr_addop);
+			report_error("Neadekvatni tipovi clanova addop operacije", expr_addop);
 			expr_addop.struct = Tab.noType;
 		}
 	}
@@ -401,7 +417,7 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 			
 		}
 		else if(desLeft.getLevel()!=1) {
-			report_error("Metoda " + desLeft.getName() + " nema samo jedan parametar", expr_map);
+			report_error("Metoda " + desLeft.getName() + " mora imati jedan parametar", expr_map);
 			expr_map.struct = Tab.noType;
 		}
 		else if(!desLeft.getLocalSymbols().iterator().next().getType().equals(Tab.intType)) {
@@ -449,7 +465,7 @@ public class SemanticAnalyzer extends VisitorAdaptor {
 			term_mulop.struct = Tab.intType;
 		}
 		else {
-			report_error("Neadekvatni tipovi u clanova mulop operacije", term_mulop);
+			report_error("Neadekvatni tipovi clanova mulop operacije", term_mulop);
 			term_mulop.struct = Tab.noType;
 		}
 	}
