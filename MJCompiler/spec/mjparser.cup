@@ -57,16 +57,18 @@ terminal Integer NUMBER, BOOL;
 terminal String IDENT, VOID;
 terminal Character CHAR;
 
-nonterminal Program, DeclList, VarDeclList, VarDecl, VarDeclAppend, Type, ConstDeclList, ConstDecl, ConstDeclAppend;
+nonterminal Program, DeclList, VarDeclList, VarDecl, VarDeclAppend, ConstDeclList, ConstDecl, ConstDeclAppend;
 nonterminal Setop, Mulop, Addop, Relop, Assignop, Label, ConstValue;
 nonterminal MethodSignature, MethodType, FormPars, MethodDecl, MethodDeclList;
-nonterminal StatementList, Statement, StatementBlock, DesignatorStatement, NumForPrint, WhileArgs;
-nonterminal ActPars, ElseStatement, MethodPars,  FormParam, IfCond;
-nonterminal ProgName, MethodName, DesignatorArrayName, DoNonTerm, ActParsIntro, MethodRecursionHelper;
+nonterminal StatementList, Statement, StatementBlock, DesignatorStatement, WhileArgs;
+nonterminal ActPars, ElseStatement, MethodPars, NumForPrint, FormParam, IfCond;
+nonterminal ProgName, DoNonTerm, ActParsIntro, MethodRecursionHelper, ElseNonTerm, CommaNonTerm, WhileNonTerm;
 
 nonterminal rs.etf.pp1.symboltable.concepts.Struct Factor, Unary, Term, Expr, CondFact, CondTerm, Condition, MethodCall;
-nonterminal rs.etf.pp1.symboltable.concepts.Obj Designator;
+nonterminal rs.etf.pp1.symboltable.concepts.Obj Designator, DesignatorArrayName;
 
+nonterminal rs.etf.pp1.symboltable.concepts.Obj MethodName;
+nonterminal rs.etf.pp1.symboltable.concepts.Struct Type;
 precedence left ELSE;
 
 Program ::= (Program) PROG ProgName DeclList LBRACE MethodDeclList RBRACE;
@@ -82,7 +84,7 @@ DeclList ::=(DeclList_Var) DeclList VarDeclList
 
 VarDeclList ::= (VarDeclList_list) Type VarDecl VarDeclAppend SEMI
 				|
-				(VarDeclList_error) error:e VarDeclAppend SEMI
+				(VarDeclList_error) error:e VarDeclAppend SEMI /*OporavakOdGreske/*
 				{: parser.report_error("Izvrsen oporavak od greske u definiciji globalne promenljive u liniji " + eleft, null);  :}
 				;
 				
@@ -129,9 +131,9 @@ FormPars ::=	(FormPars_mul) FormPars COMMA FormParam
 				(FormPars_one) FormParam
 				|
 				(FormPars_empty) /*epsilon*/
-				/*|
-				(Form_Pars_error) error:e OporavakOdGreske
-				{: parser.report_error("Izvrsen oporavak za formalne parametre u liniji " + eleft, null);  :}*/
+				|
+				(Form_Pars_error) error:e /*OporavakOdGreske*/
+				{: parser.report_error("Izvrsen oporavak za formalne parametre u liniji " + eleft, null);  :}
 				;
 				
 MethodPars ::=	(MethodPars_empty) /*epsilon*/
@@ -170,15 +172,17 @@ Statement ::= 	(Statement_designator) DesignatorStatement SEMI
 				|
 				(Statement_print) PRINT LPAREN Expr NumForPrint RPAREN SEMI
 				|
-				(Statement_do_while) DoNonTerm StatementBlock WHILE LPAREN WhileArgs RPAREN SEMI
+				(Statement_do_while) DoNonTerm StatementBlock WhileNonTerm LPAREN WhileArgs RPAREN SEMI
 				;
 
 DoNonTerm ::= (DoNonTerm) DO ;
 
+WhileNonTerm ::= (WhileNonTerm) WHILE ;
+
 IfCond ::=	(IfCond_correct) Condition
-			/*|
-			(IfCond_error) error:e OporavakOdGreske
-			{: parser.report_error("Izvrsen oporavak za if uslov  u liniji " + eleft, null);  :}*/
+			|
+			(IfCond_error) error:e /*OporavakOdGreske*/
+			{: parser.report_error("Izvrsen oporavak za if uslov  u liniji " + eleft, null);  :}
 			;
 
 StatementBlock ::=	(StatementBlock_block) LBRACE StatementList RBRACE 
@@ -186,27 +190,31 @@ StatementBlock ::=	(StatementBlock_block) LBRACE StatementList RBRACE
 					(StatementBlock_one) Statement
 					;
 				
-ElseStatement ::= 	(ElseStatement_yes) ELSE StatementBlock
+ElseStatement ::= 	(ElseStatement_yes) ElseNonTerm StatementBlock
 					|
 					(ElseStatement_no) /*epsilon*/
 					;
+
+ElseNonTerm ::= (ElseNonTerm) ELSE ;
 				
 NumForPrint ::= (NumForPrint_yes) COMMA NUMBER
 				|
 				(NumForPrint_no) /*epsilon*/
 				;
 
-WhileArgs ::=	(WhileArgs_cond_des) Condition COMMA DesignatorStatement
+WhileArgs ::=	(WhileArgs_cond_des) Condition CommaNonTerm DesignatorStatement
 				|
 				(WhileArgs_cond) Condition
 				|
 				(WhileArgs_empty) /*epsilon*/
 				;
 
+CommaNonTerm ::= (CommaNonTerm) COMMA;
+
 DesignatorStatement ::=	(DesignatorStatement_assignExpr) Designator Assignop Expr
-						/*|
-						(DesignatorStatement_error) error:e OporavakOdGreske
-						{: parser.report_error("Izvrsen oporavak za dodelu vrednosti u liniji " + eleft, null);  :}*/
+						|
+						(DesignatorStatement_error) error:e /*OporavakOdGreske*/
+						{: parser.report_error("Izvrsen oporavak za dodelu vrednosti u liniji " + eleft, null);  :}
 						|
 						(DesignatorStatement_actPars) MethodCall
 						|

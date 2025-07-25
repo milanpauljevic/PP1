@@ -3,6 +3,7 @@ package rs.ac.bg.etf.pp1;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
@@ -14,6 +15,7 @@ import org.apache.log4j.xml.DOMConfigurator;
 
 import rs.ac.bg.etf.pp1.ast.Program;
 import rs.ac.bg.etf.pp1.util.Log4JUtils;
+import rs.etf.pp1.mj.runtime.Code;
 import rs.etf.pp1.symboltable.*;
 import rs.etf.pp1.symboltable.concepts.Obj;
 import rs.etf.pp1.symboltable.concepts.Struct;
@@ -69,16 +71,20 @@ public class Compiler {
 			setObj.setAdr(-1);
 			setObj.setLevel(-1);
 			
-			//void add(set a, int b);
+			//void add(set a, int b) int actPars, i;
 			Obj addMethod = Tab.insert(Obj.Meth, "add", Tab.noType);
 			{
 				Tab.openScope();
 				Obj addParam1 = new Obj(Obj.Var, "a", setType, 0, 1);
 				Obj addParam2 = new Obj(Obj.Var, "b", Tab.intType, 1, 1);
+				Obj addParam3 = new Obj(Obj.Var, "actPars", Tab.intType, 2, 1);
+				Obj addParam4 = new Obj(Obj.Var, "i", Tab.intType, 3, 1);
 				addParam1.setFpPos(1);
 				addParam2.setFpPos(1);
 				Tab.currentScope.addToLocals(addParam1);
 				Tab.currentScope.addToLocals(addParam2);
+				Tab.currentScope.addToLocals(addParam3);
+				Tab.currentScope.addToLocals(addParam4);
 				Tab.chainLocalSymbols(addMethod);
 				addMethod.setLevel(2);
 				Tab.closeScope();
@@ -90,25 +96,29 @@ public class Compiler {
 				Tab.openScope();
 				Obj addAllParam1 = new Obj(Obj.Var, "a", setType, 0, 1);
 				Obj addAllParam2 = new Obj(Obj.Var, "b", new Struct(Struct.Array, Tab.intType), 1, 1);
+				Obj addAllParam3 = new Obj(Obj.Var, "size", Tab.intType, 2, 1);
+				Obj addAllParam4 = new Obj(Obj.Var, "i", Tab.intType, 3, 1);
 				addAllParam1.setFpPos(1);
 				addAllParam2.setFpPos(1);
 				Tab.currentScope.addToLocals(addAllParam1);
 				Tab.currentScope.addToLocals(addAllParam2);
+				Tab.currentScope.addToLocals(addAllParam3);
+				Tab.currentScope.addToLocals(addAllParam4);
 				Tab.chainLocalSymbols(addAllMethod);
 				addAllMethod.setLevel(2);
 				Tab.closeScope();
 			}
 			
 			//korekcija ord, chr i len
-			Tab.find("ord").getLocalSymbols().iterator().next().setFpPos(1);
-			Tab.find("chr").getLocalSymbols().iterator().next().setFpPos(1);
-			Tab.find("len").getLocalSymbols().iterator().next().setFpPos(1);
+			((Obj)(Tab.find("ord").getLocalSymbols().toArray()[0])).setFpPos(1);
+			((Obj)(Tab.find("chr").getLocalSymbols().toArray()[0])).setFpPos(1);
+			((Obj)(Tab.find("len").getLocalSymbols().toArray()[0])).setFpPos(1);
 			
 			/*
 				Semanticka analiza
 			*/
-			SemanticAnalyzer sa = new SemanticAnalyzer();
-			prog.traverseBottomUp(sa);
+			SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer();
+			prog.traverseBottomUp(semanticAnalyzer);
 			
 			/*
 				Ispis tabele simbola
@@ -116,9 +126,24 @@ public class Compiler {
 			log.info("===================================");
 			Tab.dump();
 			
-			//FINAL LOG
-			if(!p.errorDetected && sa.passed()) {
-				log.info("Parsiranje USPESNO ZAVRSENO");
+			//PROVERA USPEHA PARSIRANJA I SEMANTICKE ANALIZE
+			if(!p.errorDetected && semanticAnalyzer.passed()) {
+				
+				/*
+				 	GENERISANJE KODA
+				*/
+				
+				File objFile = new File("test/program.obj");
+				if(objFile.exists()) objFile.delete();
+				
+				CodeGenerator codeGenerator = new CodeGenerator();
+				prog.traverseBottomUp(codeGenerator);
+				
+				Code.dataSize = semanticAnalyzer.nVars;
+				Code.mainPc = codeGenerator.getMainPc();
+				Code.write(new FileOutputStream(objFile));
+				
+				log.info("Parsiranje USPESNO ZAVRSENO!");
 			}
 			else {
 				log.error("Parsiranje NEUSPESNO ZAVRSENO");
